@@ -1,0 +1,87 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-05-30 12:30:30.361994",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "api_method",
+  "status_code",
+  "column_break_joia",
+  "ref_doctype",
+  "ref_document",
+  "section_break_esti",
+  "payload",
+  "response",
+  "config_details"
+ ],
+ "fields": [
+  {
+   "fieldname": "api_method",
+   "fieldtype": "Data",
+   "label": "API Method"
+  },
+  {
+   "fieldname": "status_code",
+   "fieldtype": "Data",
+   "label": "Status Code"
+  },
+  {
+   "fieldname": "column_break_joia",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ref_doctype",
+   "fieldtype": "Data",
+   "label": "Ref Doctype"
+  },
+  {
+   "fieldname": "ref_document",
+   "fieldtype": "Data",
+   "label": "Ref Document"
+  },
+  {
+   "fieldname": "section_break_esti",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "response",
+   "fieldtype": "Code",
+   "label": "Response"
+  },
+  {
+   "fieldname": "config_details",
+   "fieldtype": "Code",
+   "label": "Config Details"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-05-30 12:32:57.110538",
+ "modified_by": "Administrator",
+ "module": "Icici Integration Server Composite",
+ "name": "Bank Request Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
