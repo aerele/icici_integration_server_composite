@@ -12,6 +12,7 @@
   "aggr_id",
   "aggr_name",
   "urn",
+  "ip_address",
   "column_break_xenv",
   "payment_creator_user_id",
   "payment_status_checker_user_id",
@@ -103,11 +104,16 @@
    "fieldtype": "Data",
    "label": "Corp User",
    "reqd": 1
+  },
+  {
+   "fieldname": "ip_address",
+   "fieldtype": "Data",
+   "label": "IP Address"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-05-30 14:22:31.365410",
+ "modified": "2024-06-04 12:22:17.865557",
  "modified_by": "Administrator",
  "module": "Icici Integration Server Composite",
  "name": "ICICI Connector",
