@@ -197,7 +197,7 @@ def make_payment(payload):
 					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
 		else:
-			res_dict.status = "failure"
+			res_dict.status = "Request Failure"
 			if response.success == "false":
 				res_dict.message = response.text
 		frappe.log_error("Response message", response.text)
