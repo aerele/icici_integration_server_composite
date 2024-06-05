@@ -2,7 +2,7 @@
 # For license information, please see license.txt
 import frappe
 from frappe.model.document import Document
-
+from frappe.utils import flt, cstr
 import rsa
 from base64 import b64decode, b64encode
 import json
@@ -37,10 +37,11 @@ def decrypt_data(data, key):
 	return json.loads(unpaded[BLOCK_SIZE:])
 
 def decrypt_key(key, connector_doc):
+#	private_key_file_path = "/home/frappe/frappe-bench/privkey_rsa.pem"
 	private_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
 	frappe.log_error("private_key_file_path", private_key_file_path)
 
-	with open(private_key_file_path,'rb') as p:
+	with open(private_key_file_path, 'rb') as p:
 		private_key = rsa.PrivateKey.load_pkcs1(p.read())
 		decrypted_key = rsa.decrypt(b64decode(key), private_key).decode('utf-8')
 		return decrypted_key
@@ -67,6 +68,7 @@ def encrypt_data(data, key):
 	return  b64encode(encrypted_with_iv).decode('utf-8')
 
 def encrypt_key(key, connector_doc):
+#	bank_public_key_file_path = "/home/frappe/frappe-bench/icici_cert_composite_rsa.pem"
 	bank_public_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.bank_public_key}).get_full_path()
 
 	with open(bank_public_key_file_path, "rb") as p:
@@ -103,7 +105,7 @@ def make_payment(payload):
 				"DEBITACC": connector_doc.account_number,
 				"CREDITACC": payload.account_number ,
 				"IFSC": payload.ifsc,
-				"AMOUNT": payload.amount,
+				"AMOUNT": cstr(payload.amount),
 				"CURRENCY": "INR",
 				"TXNTYPE": "TPA" if payload.bank == "ICICI Bank" else "RTG",
 				"PAYEENAME": payload.account_name,
@@ -113,13 +115,13 @@ def make_payment(payload):
 		else:
 			data = {
 				"tranRefNo": payload.name,
-				"amount": payload.amount,
+				"amount": cstr(payload.amount),
 				"senderAcctNo": connector_doc.account_number,
 				"beneAccNo": payload.bank_account_no,
 				"beneName": payload.account_name,
 				"beneIFSC": payload.branch_code,
-				"narration1": "Test",
-				"narration2": "Validate this",
+				"narration1": payload.party_name,
+				"narration2": connector_doc.aggr_id,
 				"crpId": connector_doc.corp_id,
 				"crpUsr": connector_doc.corp_usr,
 				"aggrId": connector_doc.aggr_id,
@@ -128,7 +130,9 @@ def make_payment(payload):
 				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RTG",
 				"WORKFLOW_REQD": "N"
 			}
-		
+
+		frappe.log_error(data.get('txnType'))
+
 		frappe.log_error("Data", data )
 
 		bank_request_log_doc = frappe.new_doc("Bank Request Log")
@@ -176,22 +180,24 @@ def make_payment(payload):
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
 			res_dict.response = decrypted_response
+			frappe.log_error("Decrypted Response", decrypted_response)
 			if decrypted_response:
-				response=json.loads(decrypted_response)
-				response= frappe._dict(response)
+				if isinstance(decrypted_response, str):
+					decrypted_response =json.loads(decrypted_response)
+
+				response= frappe._dict(decrypted_response)
 
 				if response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = "Success"
 				else:
-					res_dict.status = "FAILURE"
+					res_dict.status = "failure"
 					res_dict.message = response.MESSAGE
 		else:
-			res_dict.status = "FAILURE"
-			res_dict.message = ""
-
-		frappe.log_error("Payment response message", res_dict.text)
-
+			res_dict.status = "failure"
+			if response.success == "false":
+				res_dict.message = response.text
+		frappe.log_error("Response message", response.text)
 		return res_dict
 
 	except Exception as e:
