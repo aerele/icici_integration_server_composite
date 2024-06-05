@@ -101,7 +101,7 @@ def make_payment(payload):
 				"USERID": connector_doc.corp_usr,
 				"URN": connector_doc.urn,
 				"AGGRNAME": connector_doc.aggr_name,
-				"UNIQUEID": get_id(),
+				"UNIQUEID": payload.name,
 				"DEBITACC": connector_doc.account_number,
 				"CREDITACC": payload.account_number ,
 				"IFSC": payload.ifsc,
@@ -112,6 +112,7 @@ def make_payment(payload):
 				"REMARKS": "Test RTGS",
 				"WORKFLOW_REQD": "N"
 			}
+			frappe.log_error("Data - RTGS", data )
 		else:
 			data = {
 				"tranRefNo": payload.name,
@@ -130,10 +131,9 @@ def make_payment(payload):
 				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RTG",
 				"WORKFLOW_REQD": "N"
 			}
+			frappe.log_error("Data - NEFT", data )
 
 		frappe.log_error(data.get('txnType'))
-
-		frappe.log_error("Data", data )
 
 		bank_request_log_doc = frappe.new_doc("Bank Request Log")
 		bank_request_log_doc.payload = json.dumps(data)
@@ -189,9 +189,12 @@ def make_payment(payload):
 
 				if response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
-					res_dict.message = "Success"
+					res_dict.message = response.MESSAGE
+				elif response.STATUS == "DUPLICATE":
+					res_dict.status = "FAILURE"
+					res_dict.message = response.MESSAGE
 				else:
-					res_dict.status = "failure"
+					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
 		else:
 			res_dict.status = "failure"
@@ -226,13 +229,13 @@ def get_payment_status(payload):
 			"CORPID": connector_doc.corp_id,
 			"USERID": connector_doc.corp_usr,
 			"URN": connector_doc.urn,
-			"UNIQUEID": get_id()
+			"UNIQUEID": payload.name
 		}
 
 		frappe.log_error("Status - Data", data)
 
 		bank_request_log_doc = frappe.new_doc("Bank Request Log")
-		bank_request_log_doc.payload = data
+		bank_request_log_doc.payload = json.dumps(data)
 		bank_request_log_doc_name = bank_request_log_doc.insert().name
 		frappe.db.commit()
 
@@ -247,7 +250,7 @@ def get_payment_status(payload):
 		headers = {
 			"accept": "application/json",
 			"content-type": "application/json",
-			"apikey": connector_doc.api_key,
+			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": "23.20.44.165",
 			"host": "apibankingonesandbox.icicibank.com",
 			"x-priority": "0010"
@@ -276,6 +279,8 @@ def get_payment_status(payload):
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
+			frappe.log_error("decrypted_response", decrypted_response)
+
 			res_dict.decrypted_response = decrypted_response
 			if decrypted_response:
 				response = frappe._dict(decrypted_response)
@@ -283,6 +288,9 @@ def get_payment_status(payload):
 					res_dict.status = "Processed"
 					res_dict.reference_number = response.UTRNUMBER
 					res_dict.message = "Success"
+				elif response.STATUS == "PENDING":
+					res_dict.status = "PENDING"
+					res_dict.message = response.MESSAGE
 				else:
 					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
@@ -290,7 +298,7 @@ def get_payment_status(payload):
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text
 
-		frappe.log_error("Payment response message", res_dict.text)
+		frappe.log_error("Payment response message", response.text)
 		return res_dict
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Payment Status Traceback")
