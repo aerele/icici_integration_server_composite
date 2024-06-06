@@ -197,13 +197,16 @@ def make_payment(payload):
 					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
 		else:
-			res_dict.status = "failure"
-			if response.success == "false":
-				res_dict.message = response.text
+			res_dict.status = "Request Failure"
+			res_dict.message = response.text or ""
 		frappe.log_error("Response message", response.text)
 		return res_dict
 
 	except Exception as e:
+		res_dict = frappe._dict({})
+		res_dict.status = "Request Failure"
+		res_dict.message = frappe.get_traceback()
+
 		frappe.log_error(frappe.get_traceback(), "Payment Traceback")
 
 #Payment Status
