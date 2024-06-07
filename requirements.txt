@@ -1,0 +1,6 @@
+pycryptodome
+cryptography
+rsa
+requests
+uuid
+urllib3
