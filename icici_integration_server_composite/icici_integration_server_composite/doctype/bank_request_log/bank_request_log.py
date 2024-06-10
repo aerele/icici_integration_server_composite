@@ -103,8 +103,8 @@ def make_payment(payload):
 				"AGGRNAME": connector_doc.aggr_name,
 				"UNIQUEID": payload.name,
 				"DEBITACC": connector_doc.account_number,
-				"CREDITACC": payload.account_number ,
-				"IFSC": payload.ifsc,
+				"CREDITACC": payload.bank_account_no,
+				"IFSC": payload.branch_code,
 				"AMOUNT": cstr(payload.amount),
 				"CURRENCY": "INR",
 				"TXNTYPE": "TPA" if payload.bank == "ICICI Bank" else "RTG",
@@ -153,7 +153,7 @@ def make_payment(payload):
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address") or "23.20.44.165",
 			"host": "apibankingonesandbox.icicibank.com",
-			"x-priority": "0010"
+			"x-priority": "0001" if payload.mode_of_transfer == "RTGS" else "0010"
 		}
 		frappe.log_error("headers", headers )
 
@@ -186,13 +186,18 @@ def make_payment(payload):
 					decrypted_response =json.loads(decrypted_response)
 
 				response= frappe._dict(decrypted_response)
-
 				if response.STATUS == "SUCCESS":
+					res_dict.status = "ACCEPTED"
+					res_dict.message = response.MESSAGE
+				if response.STATUS == "PENDING":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = response.MESSAGE
 				elif response.STATUS == "DUPLICATE":
 					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
+				elif  response.errorCode == "997":
+					res_dict.status = "Request Failure"
+					res_dict.message = response.errorCode + " : " + response.description
 				else:
 					res_dict.status = "FAILURE"
 					res_dict.message = response.MESSAGE
@@ -293,7 +298,7 @@ def get_payment_status(payload):
 					res_dict.reference_number = response.UTRNUMBER
 					res_dict.message = "Success"
 				elif response.STATUS == "PENDING":
-					res_dict.status = "PENDING"
+					res_dict.status = "Pending"
 					res_dict.message = response.MESSAGE
 				else:
 					res_dict.status = "FAILURE"
