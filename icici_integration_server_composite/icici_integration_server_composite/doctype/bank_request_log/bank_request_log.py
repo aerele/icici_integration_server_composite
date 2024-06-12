@@ -136,7 +136,7 @@ def make_payment(payload):
 				"tranRefNo": payload.name,
 				"paymentRef": payload.name,
 				"senderName": payment_doc.company_bank_account_name,
-				"mobile": payload.mobile_number,
+				"mobile": payment_doc.mobile_number,
 				"retailerCode": connector_doc.retailer_code,
 				"passCode": connector_doc.pass_code,
 				"bcID": connector_doc.bcid,
