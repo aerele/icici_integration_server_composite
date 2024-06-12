@@ -13,6 +13,10 @@
   "aggr_name",
   "urn",
   "ip_address",
+  "enable_imps",
+  "retailer_code",
+  "pass_code",
+  "bcid",
   "column_break_xenv",
   "payment_creator_user_id",
   "payment_status_checker_user_id",
@@ -109,11 +113,38 @@
    "fieldname": "ip_address",
    "fieldtype": "Data",
    "label": "IP Address"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_imps",
+   "fieldtype": "Check",
+   "label": "Enable IMPS"
+  },
+  {
+   "depends_on": "enable_imps",
+   "fieldname": "retailer_code",
+   "fieldtype": "Data",
+   "label": "Retailer Code",
+   "mandatory_depends_on": "enable_imps"
+  },
+  {
+   "depends_on": "enable_imps",
+   "fieldname": "pass_code",
+   "fieldtype": "Data",
+   "label": "Pass Code",
+   "mandatory_depends_on": "enable_imps"
+  },
+  {
+   "depends_on": "enable_imps",
+   "fieldname": "bcid",
+   "fieldtype": "Data",
+   "label": "BCID",
+   "mandatory_depends_on": "enable_imps"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-06-04 12:22:17.865557",
+ "modified": "2024-06-12 11:05:47.795154",
  "modified_by": "Administrator",
  "module": "Icici Integration Server Composite",
  "name": "ICICI Connector",

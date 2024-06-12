@@ -76,6 +76,14 @@ def encrypt_key(key, connector_doc):
 		encrypted_key = rsa.encrypt(key, public_key)
 		return b64encode(encrypted_key).decode('utf-8')
 
+def get_priority(mode_of_transfer):
+	if mode_of_transfer == "RTGS":
+		return "0001"
+	elif mode_of_transfer == "IMPS":
+		return "0100"
+	else:
+		return "0010"
+
 @frappe.whitelist()
 def make_payment(payload):
 	try:
@@ -113,6 +121,31 @@ def make_payment(payload):
 				"WORKFLOW_REQD": "N"
 			}
 			frappe.log_error("Data - RTGS", data )
+
+		elif payload.mode_of_transfer == "IMPS":
+			if not connector_doc.enable_imps:
+				res_dict = frappe._dict({})
+				res_dict.status = "Request Failure"
+				res_dict.message = "IMPS is not enabled for this {} account.".format(connector_doc.account_number)
+				return
+			data ={
+				"localTxnDtTime": frappe.utils.now_datetime().strftime("%Y%m%d%H%M%S"),
+				"beneAccNo": payload.bank_account_no,
+				"beneIFSC": payload.branch_code,
+				"amount": cstr(payload.amount),
+				"tranRefNo": payload.name,
+				"paymentRef": payload.name,
+				"senderName": payment_doc.company_bank_account_name,
+				"mobile": payload.mobile_number,
+				"retailerCode": connector_doc.retailer_code,
+				"passCode": connector_doc.pass_code,
+				"bcID": connector_doc.bcid,
+				"aggrId": connector_doc.aggr_id,
+				"crpId": connector_doc.corp_id,
+				"crpUsr": connector_doc.corp_usr
+				}
+
+			frappe.log_error("Data - IMPS", data )
 		else:
 			data = {
 				"tranRefNo": payload.name,
@@ -153,7 +186,7 @@ def make_payment(payload):
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address") or "23.20.44.165",
 			"host": "apibankingonesandbox.icicibank.com",
-			"x-priority": "0001" if payload.mode_of_transfer == "RTGS" else "0010"
+			"x-priority": get_priority(payload.mode_of_transfer)
 		}
 		frappe.log_error("headers", headers )
 
@@ -232,16 +265,24 @@ def get_payment_status(payload):
 
 		if not connector_doc:
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
+		if payload.mode_of_transfer == "IMPS":
+			data = {
+				"transRefNo": payload.name,
+				"date": payload.payment_date,
+				"recon360": "N",
+				"passCode": connector_doc.pass_code,
+				"bcID": connector_doc.bcid
+				}
+		else:
+			data = {
+				"AGGRID": connector_doc.aggr_id,
+				"CORPID": connector_doc.corp_id,
+				"USERID": connector_doc.corp_usr,
+				"URN": connector_doc.urn,
+				"UNIQUEID": payload.name
+			}
 
-		data = {
-			"AGGRID": connector_doc.aggr_id,
-			"CORPID": connector_doc.corp_id,
-			"USERID": connector_doc.corp_usr,
-			"URN": connector_doc.urn,
-			"UNIQUEID": payload.name
-		}
-
-		frappe.log_error("Status - Data", data)
+		frappe.log_error(f"Status {payload.mode_of_transfer} - Data", data)
 
 		bank_request_log_doc = frappe.new_doc("Bank Request Log")
 		bank_request_log_doc.payload = json.dumps(data)
@@ -262,7 +303,7 @@ def get_payment_status(payload):
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": "23.20.44.165",
 			"host": "apibankingonesandbox.icicibank.com",
-			"x-priority": "0010"
+			"x-priority": get_priority(payload.mode_of_transfer)
 		}
 		frappe.log_error("status - header", headers)
 
