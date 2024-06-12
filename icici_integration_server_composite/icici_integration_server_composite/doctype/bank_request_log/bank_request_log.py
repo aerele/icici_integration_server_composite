@@ -189,7 +189,7 @@ def make_payment(payload):
 				if response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = response.MESSAGE
-				if response.STATUS == "PENDING":
+				elif response.STATUS == "PENDING":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = response.MESSAGE
 				elif response.STATUS == "DUPLICATE":
