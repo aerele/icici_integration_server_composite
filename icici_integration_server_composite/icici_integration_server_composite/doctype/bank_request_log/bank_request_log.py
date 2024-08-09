@@ -7,11 +7,18 @@ import rsa
 from base64 import b64decode, b64encode
 import json
 from Crypto.Util.Padding import pad
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, PKCS1_v1_5 as Cipher_PKCS1_v1_5
 import requests
 from Crypto.Util.Padding import unpad
 
+from Crypto.PublicKey import RSA
+import base64
+
 import string, random
+
+bank_balance_url = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
+payment_status_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-status"
+make_payment_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-payment"
 
 class BankRequestLog(Document):
 	pass
@@ -178,8 +185,6 @@ def make_payment(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
-		url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-payment"
-
 		headers = {
 			"accept": "application/json",
 			"content-type": "application/json",
@@ -204,7 +209,7 @@ def make_payment(payload):
 
 		res_dict = frappe._dict({})
 
-		response = requests.post(url, headers=headers, data=json.dumps(request_payload))
+		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
 		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
 
 		frappe.log_error("response body", response.request.body)
@@ -295,8 +300,6 @@ def get_payment_status(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
-		url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-status"
-
 		headers = {
 			"accept": "application/json",
 			"content-type": "application/json",
@@ -319,7 +322,7 @@ def get_payment_status(payload):
 		}
 		frappe.log_error("status - request_payload", request_payload)
 
-		response = requests.post(url, headers=headers, data=json.dumps(request_payload))
+		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
 		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
 
 		frappe.log_error("response body", response.request.body)
@@ -355,3 +358,94 @@ def get_payment_status(payload):
 		res_dict.message = frappe.get_traceback()
 
 		frappe.log_error(frappe.get_traceback(), "Payment Status Traceback")
+		return res_dict
+
+def get_encrypted_request(data, connector_doc):
+	source = json.dumps(data)
+
+	public_key_path = frappe.get_doc("File", {"file_url": connector_doc.bank_public_key}).get_full_path()
+	public_key = open(public_key_path, "r")
+	key = RSA.importKey(public_key.read())
+
+	cipher = Cipher_PKCS1_v1_5.new(key)
+	cipher_text = cipher.encrypt(source.encode())
+	cipher_text = base64.b64encode(cipher_text)
+	return cipher_text
+
+def get_decrypted_response_aysnc(response, connector_doc):
+	private_key_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
+	public_key = open(private_key_path, "r")
+	cipher = Cipher_PKCS1_v1_5.new(private_key.read())
+
+	try:
+		raw_cipher_data = base64.b64decode(response.content)
+	except:
+		raise Exception(f"Invalid Response {response.content}")
+
+	decrypted_res = cipher.decrypt(raw_cipher_data, b'x')
+	decrypted_res = decrypted_res.decode("utf-8")
+	return json.loads(decrypted_res)
+
+@frappe.whitelist()
+def get_bank_balance(payload):
+	if not frappe.has_permission("Bank Request Log", "write"):
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	if isinstance(payload, str):
+		payload = json.loads(payload)
+
+	payload = frappe._dict(payload)
+
+	connector_doc = frappe.get_doc("ICICI Connector", payload.bank_account_number)
+
+	if not connector_doc:
+		frappe.throw(f"Connector for account number {payload.bank_account_number} not found")
+	
+
+	headers = {
+		"accept": "*/*",
+		"content-type": "text/plain",
+		"apikey": connector_doc.get_password("api_key"),
+		"x-forwarded-for": connector_doc.ip_address or "52.140.62.166"
+	}
+
+	data = {
+        	"AGGRID": connector_doc.aggr_id,
+	        "CORPID": connector_doc.corp_id,
+	        "USERID": connector_doc.payment_status_checker_user_id or connector_doc.payment_creator_user_id,
+	        "URN":connector_doc.urn,
+	        "ACCOUNTNO": payload.company_account_number
+	}
+
+	res_dict = frappe._dict({})
+
+	try:
+		response = requests.post(bank_balance_url, headers=headers, data=get_encrypted_request(data, connector_doc))
+		if response.ok:
+			try:
+				decrypted_response = get_decrypted_response_aysnc(response, connector_doc)
+
+				res_dict.res_text = decrypted_response
+				res_dict.res_status = response.status_code
+				res_dict.api_method = "get_bank_balance"
+				res_dict.config_details = data
+				if 'EFFECTIVEBAL' in decrypted_response and decrypted_response['EFFECTIVEBAL']:
+					res_dict.server_status="Success"
+					res_dict.balance = decrypted_response['EFFECTIVEBAL']
+			except:
+				res_dict.server_status="Failed"
+				res_dict.res_text = response.text
+				frappe.log_error(title="get_bank_balance - API Response", message= frappe.get_traceback())
+
+		else:
+			res_dict.res_text = response.text
+			res_dict.res_status = response.status_code
+			res_dict.api_method = "get_bank_balance"
+			res_dict.config_details = data
+			res_dict.server_status="Failed"
+	except:
+		res_dict.server_status="Failed"
+		res_dict.res_text = response.text
+		frappe.log_error(title="make_payment - API Response", message= frappe.get_traceback())
+
+	return res_dict
