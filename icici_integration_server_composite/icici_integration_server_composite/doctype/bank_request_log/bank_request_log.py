@@ -7,7 +7,7 @@ import rsa
 from base64 import b64decode, b64encode
 import json
 from Crypto.Util.Padding import pad
-from Crypto.Cipher import AES, PKCS1_v1_5 as Cipher_PKCS1_v1_5
+from Crypto.Cipher import AES, PKCS1_v1_5
 import requests
 from Crypto.Util.Padding import unpad
 
@@ -19,6 +19,7 @@ import string, random
 bank_balance_url = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
 payment_status_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-status"
 make_payment_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-payment"
+bank_statement_url_paginated = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/AccountStatements"
 
 class BankRequestLog(Document):
 	pass
@@ -367,7 +368,7 @@ def get_encrypted_request(data, connector_doc):
 	public_key = open(public_key_path, "r")
 	key = RSA.importKey(public_key.read())
 
-	cipher = Cipher_PKCS1_v1_5.new(key)
+	cipher = PKCS1_v1_5.new(key)
 	cipher_text = cipher.encrypt(source.encode())
 	cipher_text = base64.b64encode(cipher_text)
 	return cipher_text
@@ -375,7 +376,7 @@ def get_encrypted_request(data, connector_doc):
 def get_decrypted_response_aysnc(response, connector_doc):
 	private_key_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
 	public_key = open(private_key_path, "r")
-	cipher = Cipher_PKCS1_v1_5.new(private_key.read())
+	cipher = PKCS1_v1_5.new(private_key.read())
 
 	try:
 		raw_cipher_data = base64.b64decode(response.content)
@@ -410,11 +411,11 @@ def get_bank_balance(payload):
 	}
 
 	data = {
-        	"AGGRID": connector_doc.aggr_id,
-	        "CORPID": connector_doc.corp_id,
-	        "USERID": connector_doc.payment_status_checker_user_id or connector_doc.payment_creator_user_id,
-	        "URN":connector_doc.urn,
-	        "ACCOUNTNO": payload.company_account_number
+			"AGGRID": connector_doc.aggr_id,
+			"CORPID": connector_doc.corp_id,
+			"USERID": connector_doc.payment_status_checker_user_id or connector_doc.payment_creator_user_id,
+			"URN":connector_doc.urn,
+			"ACCOUNTNO": payload.company_account_number
 	}
 
 	res_dict = frappe._dict({})
@@ -448,4 +449,153 @@ def get_bank_balance(payload):
 		res_dict.res_text = response.text
 		frappe.log_error(title="make_payment - API Response", message= frappe.get_traceback())
 
+	return res_dict
+
+def load_rsa_keys(connector_doc):
+	public_key_path = frappe.get_doc("File", {"file_url": connector_doc.bank_public_key}).get_full_path()
+	private_key_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
+
+	with open(public_key_path, 'rb') as public_file:
+		public_key = RSA.import_key(public_file.read())
+
+	with open(private_key_path, 'rb') as private_file:
+		private_key = RSA.import_key(private_file.read())
+
+	return public_key, private_key
+   
+# Encrypt data using RSA public key
+def rsa_encrypt(data, public_key):
+	cipher = PKCS1_v1_5.new(public_key)
+	encrypted_data = cipher.encrypt(data.encode())
+	# cipher = PKCS1_OAEP.new(public_key)
+	# encrypted_data = cipher.encrypt(data.encode())
+	return encrypted_data
+
+# Decrypt data using RSA private key
+def rsa_decrypt(encrypted_data, private_key):
+	cipher = PKCS1_v1_5.new(private_key)
+	decrypted_data = cipher.decrypt(encrypted_data, None)
+	return decrypted_data.decode('utf-8')
+   
+def decrypt_account_statement(connector_doc, encrypted_key, encrypted_data):
+	try:
+		# Load the client's RSA private key
+		public_key, private_key = load_rsa_keys(connector_doc)
+ 
+		# Step 1: Decrypting the encrypted key using client private key
+		decoded_encrypted_key = base64.b64decode(encrypted_key)
+		session_key = rsa_decrypt(decoded_encrypted_key, private_key)
+		# Step 2: Base64 decode encrypted data
+		decoded_data = base64.b64decode(encrypted_data)
+ 
+		# Step 3: Retrieving iv from the first 16 characters of decoded data
+		iv = decoded_data[:16]
+ 
+		# Step 4: Doing symmetric key decryption on encrypted data
+		cipher = AES.new(session_key.encode('utf-8'), AES.MODE_CBC, iv)
+		decrypted_data = cipher.decrypt(decoded_data[16:])
+ 
+		# Remove PKCS5 padding
+		unpad = lambda s: s[:-ord(s[len(s)-1:])]
+		account_statement = unpad(decrypted_data)
+ 
+		return account_statement.decode('utf-8')
+ 
+	except Exception as e:
+		print('Decryption Error:', str(e))
+		return None
+
+@frappe.whitelist()
+def get_bank_statement(payload):
+	if not frappe.has_permission("Bank Request Log", "write"):
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	if isinstance(payload, str):
+		payload = json.loads(payload)
+
+	payload = frappe._dict(payload)
+
+	connector_doc = frappe.get_doc("ICICI Connector", payload.bank_account_number)
+
+	if not connector_doc:
+		frappe.throw(f"Connector for account number {payload.bank_account_number} not found")
+
+	headers = {
+		"accept": "*/*",
+		"content-type": "text/plain",
+		"apikey": connector_doc.get_password("api_key"),
+		"x-forwarded-for": connector_doc.ip_address or "52.140.62.166"
+	}
+
+	res_dict = frappe._dict({})
+
+	try:
+		# Define the request payload for the account statement
+		request_payload = {
+			"CORPID": connector_doc.corp_id,
+			"USERID": connector_doc.payment_status_checker_user_id or connector_doc.payment_creator_user_id,
+			"AGGRID": connector_doc.aggr_id,
+			"ACCOUNTNO": payload.company_account_number,
+			"FROMDATE": payload.from_date,
+			"TODATE": payload.to_date,
+			"URN": connector_doc.urn,
+			"CONFLG": 'Y' if payload.conflg else 'N'
+		}
+
+		if payload.last_trid:
+			request_payload["LASTTRID"] = payload.last_trid
+ 
+		# Serialize the request payload to JSON
+		request_payload_json = json.dumps(request_payload)
+ 
+		# Load the client's RSA private key
+		public_key, private_key = load_rsa_keys(connector_doc)
+ 
+		# Encrypt the request payload
+		encrypted_payload = rsa_encrypt(request_payload_json, public_key)
+ 
+		# Encode the encrypted payload to base64
+		base64_encoded_payload = base64.b64encode(encrypted_payload).decode()
+ 
+		# Make the API request
+		response = requests.post(bank_statement_url_paginated, data=base64_encoded_payload, headers=headers)
+ 
+		response_data = response.json()
+		encrypted_key = response_data.get('encryptedKey')
+		encrypted_data = response_data.get('encryptedData')
+
+		# Decrypt the account statement using the decryption function
+		decrypted_statement = None
+		if encrypted_key and encrypted_data:
+			decrypted_statement = decrypt_account_statement(connector_doc, encrypted_key.encode('utf-8'), encrypted_data.encode('utf-8'))
+		
+		if decrypted_statement:
+			if "Record" in decrypted_statement:
+				res_dict.res_text = decrypted_statement
+				res_dict.res_status = response.status_code
+				res_dict.api_method = "get_bank_statements"
+				res_dict.config_details = request_payload
+				res_dict.server_status="Success"
+				if isinstance(decrypted_statement.get('Record'), list):
+					res_dict.bank_statements = json.dumps(decrypted_statement.get('Record'))
+				else:
+					res_dict.bank_statements = decrypted_statement.get('Record')
+			else:
+				res_dict.res_text = "No records found in the response"
+				res_dict.res_status = response.status_code
+				res_dict.api_method = "get_bank_statements"
+				res_dict.config_details = request_payload
+				res_dict.server_status="Success"
+		else:
+			res_dict.res_status = response.status_code
+			res_dict.api_method = "get_bank_statements"
+			res_dict.config_details = request_payload
+			res_dict.server_status="Failed"
+ 
+	except:
+		res_dict.api_method = "get_bank_statements"
+		res_dict.config_details = request_payload
+		res_dict.server_status="Failed"
+		res_dict.message = frappe.get_traceback()
+	
 	return res_dict
