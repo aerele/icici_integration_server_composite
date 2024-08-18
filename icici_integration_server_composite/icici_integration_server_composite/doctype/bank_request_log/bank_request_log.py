@@ -661,9 +661,10 @@ def get_bank_statements_paginated(payload):
 						res_dict.config_details = request_payload
 						res_dict.server_status="Success"
 						if isinstance(decrypted_response.get('Record'), list):
-							res_dict.bank_statements = json.dumps(decrypted_response.get('Record'))
+							bank_statements = get_formated_data(payload, decrypted_response.get('Record'))
+							res_dict.bank_statements = json.dumps(bank_statements)
 						else:
-							res_dict.bank_statements = decrypted_response.get('Record')
+							frappe.log_error(title="Record Type Not Expeceted")
 					else:
 						res_dict.res_text = "No records found in the response"
 						res_dict.res_status = response.status_code
@@ -697,3 +698,20 @@ def get_bank_statements_paginated(payload):
 		res_dict.message = frappe.get_traceback()
 	
 	return res_dict
+
+def get_formated_data(payload, records):
+	bank_statements = []
+	if records:
+		for record in records:
+			s = {
+				'date': record.get('VALUEDATE'),
+				'bank_account': payload.bank_account_number,
+				'withdrawal': record.get('AMOUNT') if record.get('TYPE') == 'DR' else 0,
+				'deposit': record.get('AMOUNT') if record.get('TYPE') == 'CR' else 0,
+				'transaction_type': record.get('TYPE'),
+				'reference_number': record.get('TRANSACTIONID'),
+				'description': record.get('REMARKS'),
+				'balance': record.get('BALANCE')
+			}
+			bank_statements.append(s)
+	return bank_statements
