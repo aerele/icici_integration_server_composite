@@ -7,6 +7,7 @@ description = "Oversees the ICICI Integrations"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
+
 dependencies = [
     "pycryptodome", "cryptography", "urllib3"
 ]
