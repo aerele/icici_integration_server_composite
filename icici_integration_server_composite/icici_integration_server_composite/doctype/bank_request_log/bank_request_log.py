@@ -17,12 +17,12 @@ from Crypto.Cipher import PKCS1_v1_5 as Cipher_PKCS1_v1_5
 import base64
 import rsa
 
-payment_status_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-status"
-make_payment_url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-payment"
+payment_status_url = "https://apibankingone.icicibank.com/api/v1/composite-status"
+make_payment_url = "https://apibankingone.icicibank.com/api/v1/composite-payment"
 
-bank_balance_url = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
-bank_statement_url = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/AccountStatement"
-bank_statement_url_paginated = "https://apibankingonesandbox.icicibank.com/api/Corporate/CIB/v1/AccountStatements"
+bank_balance_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
+bank_statement_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatement"
+bank_statement_url_paginated = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatements"
 
 class BankRequestLog(Document):
 	pass
