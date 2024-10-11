@@ -194,7 +194,7 @@ def make_payment(payload):
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address") or "23.20.44.165",
-			"host": "apibankingonesandbox.icicibank.com",
+			"host": "apibankingone.icicibank.com",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
 		frappe.log_error("headers", headers )
