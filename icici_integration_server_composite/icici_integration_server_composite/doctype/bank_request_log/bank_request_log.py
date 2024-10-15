@@ -190,11 +190,12 @@ def make_payment(payload):
 		encrypted_data = encrypt_data(data, aes_key_array)
 
 		headers = {
-			"accept": "application/json",
-			"content-type": "application/json",
+			"accept": "*/*",
+			"content-type": "text/plain",
 			"apikey": connector_doc.get_password("api_key"),
-			"x-forwarded-for": connector_doc.get("ip_address") or "23.20.44.165",
+			"x-forwarded-for": connector_doc.get("ip_address", ''),
 			"host": "apibankingone.icicibank.com",
+			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
 		frappe.log_error("headers", headers )
@@ -212,6 +213,9 @@ def make_payment(payload):
 		frappe.log_error("request_payload", request_payload)
 
 		res_dict = frappe._dict({})
+
+		frappe.log_error("payment - url", make_payment_url)
+
 
 		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
 		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
@@ -305,11 +309,12 @@ def get_payment_status(payload):
 		encrypted_data = encrypt_data(data, aes_key_array)
 
 		headers = {
-			"accept": "application/json",
-			"content-type": "application/json",
+			"accept": "*/*",
+			"content-type": "text/plain",
 			"apikey": connector_doc.get_password("api_key"),
-			"x-forwarded-for": "23.20.44.165",
-			"host": "apibankingonesandbox.icicibank.com",
+			"x-forwarded-for": connector_doc.get("ip_address", ''),
+			"host": "apibankingone.icicibank.com",
+			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
 		frappe.log_error("status - header", headers)
@@ -325,6 +330,7 @@ def get_payment_status(payload):
 			"iv": b64encode(IV).decode("utf-8")
 		}
 		frappe.log_error("status - request_payload", request_payload)
+		frappe.log_error("status - url", payment_status_url)
 
 		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
 		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
