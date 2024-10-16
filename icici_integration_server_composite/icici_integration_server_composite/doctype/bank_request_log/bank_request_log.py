@@ -48,9 +48,7 @@ def decrypt_data(data, key):
 	return json.loads(unpaded[BLOCK_SIZE:])
 
 def decrypt_key(key, connector_doc):
-#	private_key_file_path = "/home/frappe/frappe-bench/privkey_rsa.pem"
 	private_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
-	frappe.log_error("private_key_file_path", private_key_file_path)
 
 	with open(private_key_file_path, 'rb') as p:
 		private_key = rsa.PrivateKey.load_pkcs1(p.read())
@@ -72,14 +70,11 @@ def encrypt_data(data, key):
 	# now encrypt the padded bytes
 	encrypted = cipher.encrypt(padded)
 	#append with IV
-	# print(IV)
-	# print(encrypted)
 	encrypted_with_iv = encrypted
 	# base64 encode and convert back to string
 	return  b64encode(encrypted_with_iv).decode('utf-8')
 
 def encrypt_key(key, connector_doc):
-#	bank_public_key_file_path = "/home/frappe/frappe-bench/icici_cert_composite_rsa.pem"
 	bank_public_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.bank_public_key}).get_full_path()
 
 	with open(bank_public_key_file_path, "rb") as p:
@@ -120,7 +115,7 @@ def make_payment(payload):
 				"USERID": connector_doc.corp_usr,
 				"URN": connector_doc.urn,
 				"AGGRNAME": connector_doc.aggr_name,
-				"UNIQUEID": payload.name,
+				"UNIQUEID": str(payload.name),
 				"DEBITACC": connector_doc.account_number,
 				"CREDITACC": payload.bank_account_no,
 				"IFSC": payload.branch_code,
@@ -129,7 +124,7 @@ def make_payment(payload):
 				"TXNTYPE": "TPA" if payload.bank == "ICICI Bank" else "RTG",
 				"PAYEENAME": payload.account_name,
 				"REMARKS": "Test RTGS",
-				"WORKFLOW_REQD": "N"
+				"WORKFLOW_REQD": "Y"
 			}
 			frappe.log_error("Data - RTGS", data )
 
@@ -144,8 +139,8 @@ def make_payment(payload):
 				"beneAccNo": payload.bank_account_no,
 				"beneIFSC": payload.branch_code,
 				"amount": cstr(payload.amount),
-				"tranRefNo": payload.name,
-				"paymentRef": payload.name,
+				"tranRefNo":  str(payload.name),
+				"paymentRef":  str(payload.name),
 				"senderName": payment_doc.company_bank_account_name,
 				"mobile": payment_doc.mobile_number,
 				"retailerCode": connector_doc.retailer_code,
@@ -159,7 +154,7 @@ def make_payment(payload):
 			frappe.log_error("Data - IMPS", data )
 		else:
 			data = {
-				"tranRefNo": payload.name,
+				"tranRefNo":  str(payload.name),
 				"amount": cstr(payload.amount),
 				"senderAcctNo": connector_doc.account_number,
 				"beneAccNo": payload.bank_account_no,
@@ -172,12 +167,10 @@ def make_payment(payload):
 				"aggrId": connector_doc.aggr_id,
 				"urn": connector_doc.urn,
 				"aggrName": connector_doc.aggr_name,
-				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RTG",
-				"WORKFLOW_REQD": "N"
+				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RGS",
+				"WORKFLOW_REQD": "Y"
 			}
 			frappe.log_error("Data - NEFT", data )
-
-		frappe.log_error(data.get('txnType'))
 
 		bank_request_log_doc = frappe.new_doc("Bank Request Log")
 		bank_request_log_doc.payload = json.dumps(data)
@@ -191,17 +184,17 @@ def make_payment(payload):
 
 		headers = {
 			"accept": "*/*",
-			"content-type": "text/plain",
+			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
 			"host": "apibankingone.icicibank.com",
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
-		frappe.log_error("headers", headers )
+		frappe.log_error("headers - sts", headers )
 
 		request_payload = {
-			"requestId": payload.name,
+			"requestId":  str(payload.name),
 			"service": "",
 			"oaepHashingAlgorithm": "NONE",
 			"encryptedKey": encrypted_key,
@@ -210,18 +203,17 @@ def make_payment(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		frappe.log_error("request_payload", request_payload)
+		frappe.log_error("request_payload - sts", request_payload)
 
 		res_dict = frappe._dict({})
 
-		frappe.log_error("payment - url", make_payment_url)
-
+		frappe.log_error("payment - url - sts", make_payment_url)
 
 		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
 		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
 
-		frappe.log_error("response body", response.request.body)
-		frappe.log_error("response headers", response.request.headers)
+		frappe.log_error("response body - sts", response.request.body)
+		frappe.log_error("response headers - sts", response.request.headers)
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
@@ -251,7 +243,7 @@ def make_payment(payload):
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text or ""
 
-		frappe.log_error("Response message", response.text)
+		frappe.log_error("Response message - sts", response.text)
 		return res_dict
 
 	except Exception as e:
@@ -259,7 +251,7 @@ def make_payment(payload):
 		res_dict.status = "Request Failure"
 		res_dict.message = frappe.get_traceback()
 
-		frappe.log_error(frappe.get_traceback(), "Payment Traceback")
+		frappe.log_error( "Payment Traceback", frappe.get_traceback())
 
 #Payment Status
 @frappe.whitelist()
@@ -280,7 +272,7 @@ def get_payment_status(payload):
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
 		if payload.mode_of_transfer == "IMPS":
 			data = {
-				"transRefNo": payload.name,
+				"transRefNo":  str(payload.name),
 				"date": payload.payment_date,
 				"recon360": "N",
 				"passCode": connector_doc.pass_code,
@@ -292,7 +284,7 @@ def get_payment_status(payload):
 				"CORPID": connector_doc.corp_id,
 				"USERID": connector_doc.corp_usr,
 				"URN": connector_doc.urn,
-				"UNIQUEID": payload.name
+				"UNIQUEID":  str(payload.name)
 			}
 
 		frappe.log_error(f"Status {payload.mode_of_transfer} - Data", data)
@@ -310,7 +302,7 @@ def get_payment_status(payload):
 
 		headers = {
 			"accept": "*/*",
-			"content-type": "text/plain",
+			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
 			"host": "apibankingone.icicibank.com",
@@ -320,7 +312,7 @@ def get_payment_status(payload):
 		frappe.log_error("status - header", headers)
 
 		request_payload = {
-			"requestId": payload.name,
+			"requestId":  str(payload.name),
 			"service": "",
 			"oaepHashingAlgorithm": "NONE",
 			"encryptedKey": encrypted_key,
@@ -367,5 +359,5 @@ def get_payment_status(payload):
 		res_dict.status = "Request Failure"
 		res_dict.message = frappe.get_traceback()
 
-		frappe.log_error(frappe.get_traceback(), "Payment Status Traceback")
+		frappe.log_error("Payment Status traceback", frappe.get_traceback())
 		return res_dict
