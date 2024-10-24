@@ -17,6 +17,7 @@
   "retailer_code",
   "pass_code",
   "bcid",
+  "ifsc_code",
   "column_break_xenv",
   "payment_creator_user_id",
   "payment_status_checker_user_id",
@@ -140,11 +141,17 @@
    "fieldtype": "Data",
    "label": "BCID",
    "mandatory_depends_on": "enable_imps"
+  },
+  {
+   "default": "ICIC0000011",
+   "fieldname": "ifsc_code",
+   "fieldtype": "Data",
+   "label": "IFSC Code"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-06-12 11:05:47.795154",
+ "modified": "2024-10-24 16:11:36.385112",
  "modified_by": "Administrator",
  "module": "Icici Integration Server Composite",
  "name": "ICICI Connector",
