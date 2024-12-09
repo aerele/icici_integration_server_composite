@@ -108,6 +108,8 @@ def make_payment(payload):
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
 
 		data = {}
+		if not payload.remarks:
+			payload.remarks = ""
 		if payload.mode_of_transfer == "RTGS":
 			data = {
 				"AGGRID": connector_doc.aggr_id,
