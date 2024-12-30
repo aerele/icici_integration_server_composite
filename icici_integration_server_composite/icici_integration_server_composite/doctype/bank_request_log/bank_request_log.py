@@ -204,6 +204,7 @@ def make_payment(payload):
 		res_dict = frappe._dict({})
 
 		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
+
 		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
 
 		if response.ok:
@@ -216,22 +217,22 @@ def make_payment(payload):
 				if isinstance(decrypted_response, str):
 					decrypted_response =json.loads(decrypted_response)
 
-				response= frappe._dict(decrypted_response)
-				if response.STATUS == "SUCCESS":
+				decrypted_response= frappe._dict(decrypted_response)
+				if decrypted_response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
-					res_dict.message = response.MESSAGE
-				elif response.STATUS == "PENDING":
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.STATUS == "PENDING":
 					res_dict.status = "ACCEPTED"
-					res_dict.message = response.MESSAGE
-				elif response.STATUS == "DUPLICATE":
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.STATUS == "DUPLICATE":
 					res_dict.status = "FAILURE"
-					res_dict.message = response.MESSAGE
-				elif  response.errorCode == "997":
+					res_dict.message = decrypted_response.MESSAGE
+				elif  decrypted_response.errorCode == "997":
 					res_dict.status = "Request Failure"
-					res_dict.message = response.errorCode + " : " + response.description
+					res_dict.message = decrypted_response.errorCode + " : " + decrypted_response.description
 				else:
 					res_dict.status = "FAILURE"
-					res_dict.message = response.MESSAGE
+					res_dict.message = decrypted_response.MESSAGE
 		else:
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text or ""
