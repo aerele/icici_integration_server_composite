@@ -137,7 +137,7 @@ def make_payment(payload):
 				res_dict = frappe._dict({})
 				res_dict.status = "Request Failure"
 				res_dict.message = "IMPS is not enabled for this {} account.".format(connector_doc.account_number)
-				return
+				return res_dict
 			data ={
 				"localTxnDtTime": frappe.utils.now_datetime().strftime("%Y%m%d%H%M%S"),
 				"beneAccNo": payload.bank_account_no,
