@@ -211,7 +211,7 @@ def make_payment(payload):
 			decrypted_response= get_decrypted_response(connector_doc, response)
 			res_dict.response = decrypted_response
 			if log_name:
-				frappe.db.set_value("Bank Request Log",log_name, "decrypted_response", decrypted_response)
+				frappe.db.set_value("Bank Request Log",log_name, "decrypted_response", json.dumps(decrypted_response))
 
 			if decrypted_response:
 				if isinstance(decrypted_response, str):
@@ -317,7 +317,7 @@ def get_payment_status(payload):
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
 			if log_name:
-				frappe.db.set_value("Bank Request Log", log_name, "decrypted_response", decrypted_response)
+				frappe.db.set_value("Bank Request Log", log_name, "decrypted_response", json.dumps(decrypted_response))
 
 			res_dict.decrypted_response = decrypted_response
 			if decrypted_response:
