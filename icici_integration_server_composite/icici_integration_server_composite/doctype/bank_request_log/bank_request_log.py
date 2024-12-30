@@ -17,6 +17,9 @@ from Crypto.Cipher import PKCS1_v1_5 as Cipher_PKCS1_v1_5
 import base64
 import rsa
 
+from requests.models import Response
+
+
 payment_status_url = "https://apibankingone.icicibank.com/api/v1/composite-status"
 make_payment_url = "https://apibankingone.icicibank.com/api/v1/composite-payment"
 
@@ -128,7 +131,6 @@ def make_payment(payload):
 				"REMARKS": payload.remarks[:50],
 				"WORKFLOW_REQD": "Y"
 			}
-			frappe.log_error("Data - RTGS", data )
 
 		elif payload.mode_of_transfer == "IMPS":
 			if not connector_doc.enable_imps:
@@ -153,7 +155,6 @@ def make_payment(payload):
 				"crpUsr": connector_doc.corp_usr
 				}
 
-			frappe.log_error("Data - IMPS", data )
 		else:
 			data = {
 				"tranRefNo":  str(payload.name),
@@ -172,11 +173,6 @@ def make_payment(payload):
 				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RGS",
 				"WORKFLOW_REQD": "Y"
 			}
-			frappe.log_error("Data - NEFT", data )
-
-		bank_request_log_doc = frappe.new_doc("Bank Request Log")
-		bank_request_log_doc.payload = json.dumps(data)
-		bank_request_log_doc_name = bank_request_log_doc.insert().name
 
 		aes_key = "1234567887654321"
 		aes_key_array = aes_key.encode("utf-8")
@@ -193,7 +189,6 @@ def make_payment(payload):
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
-		frappe.log_error("headers - sts", headers )
 
 		request_payload = {
 			"requestId":  str(payload.name),
@@ -205,22 +200,18 @@ def make_payment(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		frappe.log_error("request_payload - sts", request_payload)
 
 		res_dict = frappe._dict({})
 
-		frappe.log_error("payment - url - sts", make_payment_url)
-
 		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
-		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
-
-		frappe.log_error("response body - sts", response.request.body)
-		frappe.log_error("response headers - sts", response.request.headers)
+		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
 			res_dict.response = decrypted_response
-			frappe.log_error("Decrypted Response", decrypted_response)
+			if log_name:
+				frappe.db.set_value("Bank Request Log",log_name, "decrypted_response", decrypted_response)
+
 			if decrypted_response:
 				if isinstance(decrypted_response, str):
 					decrypted_response =json.loads(decrypted_response)
@@ -245,7 +236,6 @@ def make_payment(payload):
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text or ""
 
-		frappe.log_error("Response message - sts", response.text)
 		return res_dict
 
 	except Exception as e:
@@ -254,6 +244,7 @@ def make_payment(payload):
 		res_dict.message = frappe.get_traceback()
 
 		frappe.log_error( "Payment Traceback", frappe.get_traceback())
+		return res_dict
 
 #Payment Status
 @frappe.whitelist()
@@ -289,13 +280,6 @@ def get_payment_status(payload):
 				"UNIQUEID":  str(payload.name)
 			}
 
-		frappe.log_error(f"Status {payload.mode_of_transfer} - Data", data)
-
-		bank_request_log_doc = frappe.new_doc("Bank Request Log")
-		bank_request_log_doc.payload = json.dumps(data)
-		bank_request_log_doc_name = bank_request_log_doc.insert().name
-		frappe.db.commit()
-
 		aes_key = "1234567887654321"
 		aes_key_array = aes_key.encode("utf-8")
 
@@ -311,7 +295,6 @@ def get_payment_status(payload):
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
-		frappe.log_error("status - header", headers)
 
 		request_payload = {
 			"requestId":  str(payload.name),
@@ -323,20 +306,17 @@ def get_payment_status(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		frappe.log_error("status - request_payload", request_payload)
-		frappe.log_error("status - url", payment_status_url)
 
 		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
-		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
 
-		frappe.log_error("response body", response.request.body)
-		frappe.log_error("response headers", response.request.headers)
+		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data)
 
 		res_dict = frappe._dict({})
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
-			frappe.log_error("decrypted_response", decrypted_response)
+			if log_name:
+				frappe.db.set_value("Bank Request Log", log_name, "decrypted_response", decrypted_response)
 
 			res_dict.decrypted_response = decrypted_response
 			if decrypted_response:
@@ -355,7 +335,6 @@ def get_payment_status(payload):
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text
 
-		frappe.log_error("Payment response message", response.text)
 		return res_dict
 	except Exception as e:
 		res_dict.status = "Request Failure"
@@ -363,3 +342,38 @@ def get_payment_status(payload):
 
 		frappe.log_error("Payment Status traceback", frappe.get_traceback())
 		return res_dict
+
+
+@frappe.whitelist()
+def create_api_log(res, action= None, ref_doctype= None, ref_docname= None, config_details=None):
+	"""Can create API log From response
+
+	Args:
+		res (response object): It is used to obtain an API response.
+		request_from (str): It is optional for the purposes of the API...
+	"""
+	if not isinstance(res, Response): return
+
+	try:
+		log_doc = frappe.new_doc("Bank Request Log")
+		log_doc.action = action
+		log_doc.url = res.request.url
+		log_doc.method = res.request.method
+
+		try:
+			log_doc.payload =json.dumps(res.request.body, indent=4)
+			log_doc.response = json.dumps(res.json(), indent=4)
+			log_doc.config_details = json.dumps(config_details, indent=4)
+		except:
+			log_doc.response = res.text
+			frappe.log_error(title='Error in creating API Log', message=frappe.get_traceback())
+
+		log_doc.status_code = res.status_code
+		log_doc.ref_doctype = ref_doctype
+		log_doc.ref_document = ref_docname
+		log_doc.save()
+		return log_doc.name
+	except:
+		frappe.log_error(title='Error in creating API Log', message=frappe.get_traceback())
+	else:
+		frappe.db.commit()

@@ -5,7 +5,9 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "api_method",
+  "action",
+  "url",
+  "method",
   "status_code",
   "column_break_joia",
   "ref_doctype",
@@ -13,14 +15,10 @@
   "section_break_esti",
   "payload",
   "response",
-  "config_details"
+  "config_details",
+  "decrypted_response"
  ],
  "fields": [
-  {
-   "fieldname": "api_method",
-   "fieldtype": "Data",
-   "label": "API Method"
-  },
   {
    "fieldname": "status_code",
    "fieldtype": "Data",
@@ -58,11 +56,31 @@
    "fieldname": "config_details",
    "fieldtype": "Code",
    "label": "Config Details"
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Data",
+   "label": "Action"
+  },
+  {
+   "fieldname": "url",
+   "fieldtype": "Small Text",
+   "label": "URL"
+  },
+  {
+   "fieldname": "method",
+   "fieldtype": "Data",
+   "label": "Method"
+  },
+  {
+   "fieldname": "decrypted_response",
+   "fieldtype": "Code",
+   "label": "Decrypted Response"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-05-30 12:32:57.110538",
+ "modified": "2024-12-30 15:34:29.251460",
  "modified_by": "Administrator",
  "module": "Icici Integration Server Composite",
  "name": "Bank Request Log",
