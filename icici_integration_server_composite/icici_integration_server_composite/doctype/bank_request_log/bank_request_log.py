@@ -337,6 +337,7 @@ def get_payment_status(payload):
 
 		return res_dict
 	except Exception as e:
+		res_dict = frappe._dict({})
 		res_dict.status = "Request Failure"
 		res_dict.message = frappe.get_traceback()
 
