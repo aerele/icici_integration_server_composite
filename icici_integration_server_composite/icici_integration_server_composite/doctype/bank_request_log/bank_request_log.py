@@ -221,6 +221,12 @@ def make_payment(payload):
 				if decrypted_response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.STATUS == "PENDING FOR PROCESSING":
+					res_dict.status = "ACCEPTED"
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.UTRNUMBER:
+					res_dict.status = "ACCEPTED"
+					res_dict.message = decrypted_response.UTRNUMBER
 				elif decrypted_response.STATUS == "PENDING":
 					res_dict.status = "ACCEPTED"
 					res_dict.message = decrypted_response.MESSAGE
