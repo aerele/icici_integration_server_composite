@@ -385,3 +385,24 @@ def create_api_log(res, action= None, ref_doctype= None, ref_docname= None, conf
 		frappe.log_error(title='Error in creating API Log', message=frappe.get_traceback())
 	else:
 		frappe.db.commit()
+
+
+@frappe.whitelist()
+def get_payment_date(payload):
+	payload = frappe._dict(payload)
+	request_log = frappe.get_value("Bank Request Log", {
+		"action": "Initiate Payment",
+		"config_details":["like", f"%{payload.payment_id}%"],
+		"status_code": "200",
+		"reference_doctype": "Payment Order",
+		"reference_docname": payload.payment_order
+	},
+	["name", "creation"], as_dict=1)
+
+	response = frappe._dict()
+
+	if request_log:
+		response.server_status = "Success"
+		response.payment_date = request_log.creation
+
+	return response
