@@ -394,8 +394,8 @@ def get_payment_date(payload):
 		"action": "Initiate Payment",
 		"config_details":["like", f"%{payload.payment_id}%"],
 		"status_code": "200",
-		"reference_doctype": "Payment Order",
-		"reference_docname": payload.payment_order
+		"ref_doctype": "Payment Order",
+		"ref_document": payload.payment_order
 	},
 	["name", "creation"], as_dict=1)
 
