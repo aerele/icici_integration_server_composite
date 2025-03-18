@@ -33,6 +33,41 @@ class BankRequestLog(Document):
 IV = "0000000000000000".encode("utf-8")
 BLOCK_SIZE = 16
 
+def validate_dublicate_payments(unique_id=None):
+	"""
+	Validate duplicate payments by checking if a payment has already been made against the given unique ID.
+	If a payment exists, fetch the already processed details and return them.
+	Args:
+		unique_id (str, optional): The unique identifier for the payment. Defaults to None.
+	Returns:
+		dict: A dictionary containing the formatted response of the existing payment if found, otherwise an empty dictionary.
+	"""
+	if not unique_id:
+		return
+
+	res_dict = frappe._dict({})
+	existing_payment_response, creation = frappe.get_value(
+		"Bank Request Log",
+		{
+			"unique_id": unique_id,
+			"action": "Initiate Payment",
+			"status_code": "200",
+		},
+		[
+			"decrypted_response",
+			"creation"
+		]
+	) or (None, None)
+
+	if existing_payment_response:
+		res_dict.payment_date = creation
+
+		get_formated_response(
+			existing_payment_response, res_dict
+		)
+
+	return res_dict
+
 def get_decrypted_response(connector_doc, response=None):
 	if response:
 		response=json.loads(response.text)
@@ -93,6 +128,35 @@ def get_priority(mode_of_transfer):
 	else:
 		return "0010"
 
+
+def get_formated_response(data, res_dict):
+	if data:
+		if isinstance(data, str):
+			data =json.loads(data)
+
+		data= frappe._dict(data)
+		if data.STATUS == "SUCCESS":
+			res_dict.status = "ACCEPTED"
+			res_dict.message = data.MESSAGE
+		elif data.STATUS == "PENDING FOR PROCESSING":
+			res_dict.status = "ACCEPTED"
+			res_dict.message = data.MESSAGE
+		elif data.UTRNUMBER:
+			res_dict.status = "ACCEPTED"
+			res_dict.message = data.UTRNUMBER
+		elif data.STATUS == "PENDING":
+			res_dict.status = "ACCEPTED"
+			res_dict.message = data.MESSAGE
+		elif data.STATUS == "DUPLICATE":
+			res_dict.status = "FAILURE"
+			res_dict.message = data.MESSAGE
+		elif  data.errorCode == "997":
+			res_dict.status = "Request Failure"
+			res_dict.message = data.errorCode + " : " + data.description
+		else:
+			res_dict.status = "FAILURE"
+			res_dict.message = data.MESSAGE
+
 @frappe.whitelist()
 def make_payment(payload):
 	try:
@@ -109,6 +173,10 @@ def make_payment(payload):
 
 		if not connector_doc:
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
+
+		unique_id = str(payload.name)
+		if existing_payment_response:= validate_dublicate_payments(unique_id):
+			return existing_payment_response
 
 		data = {}
 		if not payload.remarks:
@@ -205,7 +273,8 @@ def make_payment(payload):
 
 		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
 
-		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
+
+		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data, unique_id=unique_id)
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
@@ -213,32 +282,9 @@ def make_payment(payload):
 			if log_name:
 				frappe.db.set_value("Bank Request Log",log_name, "decrypted_response", json.dumps(decrypted_response))
 
-			if decrypted_response:
-				if isinstance(decrypted_response, str):
-					decrypted_response =json.loads(decrypted_response)
+			res_dict.payment_date = frappe.db.get_value("Bank Request Log",log_name, "creation")
+			get_formated_response(decrypted_response, res_dict)
 
-				decrypted_response= frappe._dict(decrypted_response)
-				if decrypted_response.STATUS == "SUCCESS":
-					res_dict.status = "ACCEPTED"
-					res_dict.message = decrypted_response.MESSAGE
-				elif decrypted_response.STATUS == "PENDING FOR PROCESSING":
-					res_dict.status = "ACCEPTED"
-					res_dict.message = decrypted_response.MESSAGE
-				elif decrypted_response.UTRNUMBER:
-					res_dict.status = "ACCEPTED"
-					res_dict.message = decrypted_response.UTRNUMBER
-				elif decrypted_response.STATUS == "PENDING":
-					res_dict.status = "ACCEPTED"
-					res_dict.message = decrypted_response.MESSAGE
-				elif decrypted_response.STATUS == "DUPLICATE":
-					res_dict.status = "FAILURE"
-					res_dict.message = decrypted_response.MESSAGE
-				elif  decrypted_response.errorCode == "997":
-					res_dict.status = "Request Failure"
-					res_dict.message = decrypted_response.errorCode + " : " + decrypted_response.description
-				else:
-					res_dict.status = "FAILURE"
-					res_dict.message = decrypted_response.MESSAGE
 		else:
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text or ""
@@ -316,7 +362,7 @@ def get_payment_status(payload):
 
 		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
 
-		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data)
+		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data, unique_id=str(payload.name))
 
 		res_dict = frappe._dict({})
 
@@ -392,12 +438,21 @@ def get_payment_date(payload):
 	payload = frappe._dict(payload)
 	request_log = frappe.get_value("Bank Request Log", {
 		"action": "Initiate Payment",
-		"config_details":["like", f"%{payload.payment_id}%"],
+		"unique_id":payload.payment_id,
 		"status_code": "200",
 		"ref_doctype": "Payment Order",
 		"ref_document": payload.payment_order
 	},
 	["name", "creation"], as_dict=1)
+	if not request_log:
+		request_log = frappe.get_value("Bank Request Log", {
+			"action": "Initiate Payment",
+			"config_details":["like", f"%{payload.payment_id}%"],
+			"status_code": "200",
+			"ref_doctype": "Payment Order",
+			"ref_document": payload.payment_order
+		},
+		["name", "creation"], as_dict=1)
 
 	response = frappe._dict()
 

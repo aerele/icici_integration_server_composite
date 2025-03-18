@@ -16,7 +16,8 @@
   "payload",
   "response",
   "config_details",
-  "decrypted_response"
+  "decrypted_response",
+  "unique_id"
  ],
  "fields": [
   {
@@ -76,7 +77,12 @@
    "fieldname": "decrypted_response",
    "fieldtype": "Code",
    "label": "Decrypted Response"
-  }
+  },
+  {
+    "fieldname": "unique_id",
+    "fieldtype": "Data",
+    "label": "Unique ID"
+   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
