@@ -1,17 +1,31 @@
 # Copyright (c) 2024, hello@aerele.in and contributors
 # For license information, please see license.txt
-import frappe
 from frappe.model.document import Document
 from frappe.utils import flt, cstr
-import rsa
-from base64 import b64decode, b64encode
-import json
-from Crypto.Util.Padding import pad
-from Crypto.Cipher import AES
-import requests
-from Crypto.Util.Padding import unpad
-
 import string, random
+import requests
+import frappe
+import json
+
+from base64 import b64decode, b64encode
+from Crypto.Cipher import AES, PKCS1_v1_5
+from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import unpad
+from Crypto.PublicKey import RSA
+
+from Crypto.Cipher import PKCS1_v1_5 as Cipher_PKCS1_v1_5
+import base64
+import rsa
+
+from requests.models import Response
+
+
+payment_status_url = "https://apibankingone.icicibank.com/api/v1/composite-status"
+make_payment_url = "https://apibankingone.icicibank.com/api/v1/composite-payment"
+
+bank_balance_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
+bank_statement_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatement"
+bank_statement_url_paginated = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatements"
 
 class BankRequestLog(Document):
 	pass
@@ -37,9 +51,7 @@ def decrypt_data(data, key):
 	return json.loads(unpaded[BLOCK_SIZE:])
 
 def decrypt_key(key, connector_doc):
-#	private_key_file_path = "/home/frappe/frappe-bench/privkey_rsa.pem"
 	private_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.private_key}).get_full_path()
-	frappe.log_error("private_key_file_path", private_key_file_path)
 
 	with open(private_key_file_path, 'rb') as p:
 		private_key = rsa.PrivateKey.load_pkcs1(p.read())
@@ -61,14 +73,11 @@ def encrypt_data(data, key):
 	# now encrypt the padded bytes
 	encrypted = cipher.encrypt(padded)
 	#append with IV
-	# print(IV)
-	# print(encrypted)
 	encrypted_with_iv = encrypted
 	# base64 encode and convert back to string
 	return  b64encode(encrypted_with_iv).decode('utf-8')
 
 def encrypt_key(key, connector_doc):
-#	bank_public_key_file_path = "/home/frappe/frappe-bench/icici_cert_composite_rsa.pem"
 	bank_public_key_file_path = frappe.get_doc("File", {"file_url": connector_doc.bank_public_key}).get_full_path()
 
 	with open(bank_public_key_file_path, "rb") as p:
@@ -102,6 +111,8 @@ def make_payment(payload):
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
 
 		data = {}
+		if not payload.remarks:
+			payload.remarks = ""
 		if payload.mode_of_transfer == "RTGS":
 			data = {
 				"AGGRID": connector_doc.aggr_id,
@@ -109,32 +120,31 @@ def make_payment(payload):
 				"USERID": connector_doc.corp_usr,
 				"URN": connector_doc.urn,
 				"AGGRNAME": connector_doc.aggr_name,
-				"UNIQUEID": payload.name,
+				"UNIQUEID": str(payload.name),
 				"DEBITACC": connector_doc.account_number,
 				"CREDITACC": payload.bank_account_no,
-				"IFSC": payload.branch_code,
+				"IFSC":  connector_doc.ifsc_code if payload.bank == "ICICI Bank" else payload.branch_code,
 				"AMOUNT": cstr(payload.amount),
 				"CURRENCY": "INR",
 				"TXNTYPE": "TPA" if payload.bank == "ICICI Bank" else "RTG",
 				"PAYEENAME": payload.account_name,
-				"REMARKS": "Test RTGS",
-				"WORKFLOW_REQD": "N"
+				"REMARKS": payload.remarks[:50],
+				"WORKFLOW_REQD": "Y"
 			}
-			frappe.log_error("Data - RTGS", data )
 
 		elif payload.mode_of_transfer == "IMPS":
 			if not connector_doc.enable_imps:
 				res_dict = frappe._dict({})
 				res_dict.status = "Request Failure"
 				res_dict.message = "IMPS is not enabled for this {} account.".format(connector_doc.account_number)
-				return
+				return res_dict
 			data ={
 				"localTxnDtTime": frappe.utils.now_datetime().strftime("%Y%m%d%H%M%S"),
 				"beneAccNo": payload.bank_account_no,
-				"beneIFSC": payload.branch_code,
+				"beneIFSC": connector_doc.ifsc_code if payload.bank == "ICICI Bank" else payload.branch_code,
 				"amount": cstr(payload.amount),
-				"tranRefNo": payload.name,
-				"paymentRef": payload.name,
+				"tranRefNo":  str(payload.name),
+				"paymentRef":  payload.remarks[:50],
 				"senderName": payment_doc.company_bank_account_name,
 				"mobile": payment_doc.mobile_number,
 				"retailerCode": connector_doc.retailer_code,
@@ -145,32 +155,24 @@ def make_payment(payload):
 				"crpUsr": connector_doc.corp_usr
 				}
 
-			frappe.log_error("Data - IMPS", data )
 		else:
 			data = {
-				"tranRefNo": payload.name,
+				"tranRefNo":  str(payload.name),
 				"amount": cstr(payload.amount),
 				"senderAcctNo": connector_doc.account_number,
 				"beneAccNo": payload.bank_account_no,
 				"beneName": payload.account_name,
-				"beneIFSC": payload.branch_code,
+				"beneIFSC": connector_doc.ifsc_code if payload.bank == "ICICI Bank" else payload.branch_code,
 				"narration1": payload.party_name,
-				"narration2": connector_doc.aggr_id,
+				"narration2": payload.remarks[:50],
 				"crpId": connector_doc.corp_id,
 				"crpUsr": connector_doc.corp_usr,
 				"aggrId": connector_doc.aggr_id,
 				"urn": connector_doc.urn,
 				"aggrName": connector_doc.aggr_name,
-				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RTG",
-				"WORKFLOW_REQD": "N"
+				"txnType": "TPA" if payload.bank == "ICICI Bank" else "RGS",
+				"WORKFLOW_REQD": "Y"
 			}
-			frappe.log_error("Data - NEFT", data )
-
-		frappe.log_error(data.get('txnType'))
-
-		bank_request_log_doc = frappe.new_doc("Bank Request Log")
-		bank_request_log_doc.payload = json.dumps(data)
-		bank_request_log_doc_name = bank_request_log_doc.insert().name
 
 		aes_key = "1234567887654321"
 		aes_key_array = aes_key.encode("utf-8")
@@ -178,20 +180,18 @@ def make_payment(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
-		url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-payment"
-
 		headers = {
-			"accept": "application/json",
+			"accept": "*/*",
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
-			"x-forwarded-for": connector_doc.get("ip_address") or "23.20.44.165",
-			"host": "apibankingonesandbox.icicibank.com",
+			"x-forwarded-for": connector_doc.get("ip_address", ''),
+			"host": "apibankingone.icicibank.com",
+			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
-		frappe.log_error("headers", headers )
 
 		request_payload = {
-			"requestId": payload.name,
+			"requestId":  str(payload.name),
 			"service": "",
 			"oaepHashingAlgorithm": "NONE",
 			"encryptedKey": encrypted_key,
@@ -200,45 +200,49 @@ def make_payment(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		frappe.log_error("request_payload", request_payload)
 
 		res_dict = frappe._dict({})
 
-		response = requests.post(url, headers=headers, data=json.dumps(request_payload))
-		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
+		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
 
-		frappe.log_error("response body", response.request.body)
-		frappe.log_error("response headers", response.request.headers)
+		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
 			res_dict.response = decrypted_response
-			frappe.log_error("Decrypted Response", decrypted_response)
+			if log_name:
+				frappe.db.set_value("Bank Request Log",log_name, "decrypted_response", json.dumps(decrypted_response))
+
 			if decrypted_response:
 				if isinstance(decrypted_response, str):
 					decrypted_response =json.loads(decrypted_response)
 
-				response= frappe._dict(decrypted_response)
-				if response.STATUS == "SUCCESS":
+				decrypted_response= frappe._dict(decrypted_response)
+				if decrypted_response.STATUS == "SUCCESS":
 					res_dict.status = "ACCEPTED"
-					res_dict.message = response.MESSAGE
-				elif response.STATUS == "PENDING":
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.STATUS == "PENDING FOR PROCESSING":
 					res_dict.status = "ACCEPTED"
-					res_dict.message = response.MESSAGE
-				elif response.STATUS == "DUPLICATE":
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.UTRNUMBER:
+					res_dict.status = "ACCEPTED"
+					res_dict.message = decrypted_response.UTRNUMBER
+				elif decrypted_response.STATUS == "PENDING":
+					res_dict.status = "ACCEPTED"
+					res_dict.message = decrypted_response.MESSAGE
+				elif decrypted_response.STATUS == "DUPLICATE":
 					res_dict.status = "FAILURE"
-					res_dict.message = response.MESSAGE
-				elif  response.errorCode == "997":
+					res_dict.message = decrypted_response.MESSAGE
+				elif  decrypted_response.errorCode == "997":
 					res_dict.status = "Request Failure"
-					res_dict.message = response.errorCode + " : " + response.description
+					res_dict.message = decrypted_response.errorCode + " : " + decrypted_response.description
 				else:
 					res_dict.status = "FAILURE"
-					res_dict.message = response.MESSAGE
+					res_dict.message = decrypted_response.MESSAGE
 		else:
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text or ""
 
-		frappe.log_error("Response message", response.text)
 		return res_dict
 
 	except Exception as e:
@@ -246,7 +250,8 @@ def make_payment(payload):
 		res_dict.status = "Request Failure"
 		res_dict.message = frappe.get_traceback()
 
-		frappe.log_error(frappe.get_traceback(), "Payment Traceback")
+		frappe.log_error( "Payment Traceback", frappe.get_traceback())
+		return res_dict
 
 #Payment Status
 @frappe.whitelist()
@@ -267,7 +272,7 @@ def get_payment_status(payload):
 			frappe.throw(f"Connector for account number {payment_doc.company_account_number} not found.")
 		if payload.mode_of_transfer == "IMPS":
 			data = {
-				"transRefNo": payload.name,
+				"transRefNo":  str(payload.name),
 				"date": payload.payment_date,
 				"recon360": "N",
 				"passCode": connector_doc.pass_code,
@@ -279,15 +284,8 @@ def get_payment_status(payload):
 				"CORPID": connector_doc.corp_id,
 				"USERID": connector_doc.corp_usr,
 				"URN": connector_doc.urn,
-				"UNIQUEID": payload.name
+				"UNIQUEID":  str(payload.name)
 			}
-
-		frappe.log_error(f"Status {payload.mode_of_transfer} - Data", data)
-
-		bank_request_log_doc = frappe.new_doc("Bank Request Log")
-		bank_request_log_doc.payload = json.dumps(data)
-		bank_request_log_doc_name = bank_request_log_doc.insert().name
-		frappe.db.commit()
 
 		aes_key = "1234567887654321"
 		aes_key_array = aes_key.encode("utf-8")
@@ -295,20 +293,18 @@ def get_payment_status(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
-		url = "https://apibankingonesandbox.icicibank.com/api/v1/composite-status"
-
 		headers = {
-			"accept": "application/json",
+			"accept": "*/*",
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
-			"x-forwarded-for": "23.20.44.165",
-			"host": "apibankingonesandbox.icicibank.com",
+			"x-forwarded-for": connector_doc.get("ip_address", ''),
+			"host": "apibankingone.icicibank.com",
+			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
-		frappe.log_error("status - header", headers)
 
 		request_payload = {
-			"requestId": payload.name,
+			"requestId":  str(payload.name),
 			"service": "",
 			"oaepHashingAlgorithm": "NONE",
 			"encryptedKey": encrypted_key,
@@ -317,19 +313,17 @@ def get_payment_status(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		frappe.log_error("status - request_payload", request_payload)
 
-		response = requests.post(url, headers=headers, data=json.dumps(request_payload))
-		frappe.db.set_value("Bank Request Log", bank_request_log_doc_name, "status_code", response.status_code)
+		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
 
-		frappe.log_error("response body", response.request.body)
-		frappe.log_error("response headers", response.request.headers)
+		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data)
 
 		res_dict = frappe._dict({})
 
 		if response.ok:
 			decrypted_response= get_decrypted_response(connector_doc, response)
-			frappe.log_error("decrypted_response", decrypted_response)
+			if log_name:
+				frappe.db.set_value("Bank Request Log", log_name, "decrypted_response", json.dumps(decrypted_response))
 
 			res_dict.decrypted_response = decrypted_response
 			if decrypted_response:
@@ -348,10 +342,67 @@ def get_payment_status(payload):
 			res_dict.status = "Request Failure"
 			res_dict.message = response.text
 
-		frappe.log_error("Payment response message", response.text)
 		return res_dict
 	except Exception as e:
+		res_dict = frappe._dict({})
 		res_dict.status = "Request Failure"
 		res_dict.message = frappe.get_traceback()
 
-		frappe.log_error(frappe.get_traceback(), "Payment Status Traceback")
+		frappe.log_error("Payment Status traceback", frappe.get_traceback())
+		return res_dict
+
+
+@frappe.whitelist()
+def create_api_log(res, action= None, ref_doctype= None, ref_docname= None, config_details=None):
+	"""Can create API log From response
+
+	Args:
+		res (response object): It is used to obtain an API response.
+		request_from (str): It is optional for the purposes of the API...
+	"""
+	if not isinstance(res, Response): return
+
+	try:
+		log_doc = frappe.new_doc("Bank Request Log")
+		log_doc.action = action
+		log_doc.url = res.request.url
+		log_doc.method = res.request.method
+
+		try:
+			log_doc.payload =json.dumps(res.request.body, indent=4)
+			log_doc.response = json.dumps(res.json(), indent=4)
+			log_doc.config_details = json.dumps(config_details, indent=4)
+		except:
+			log_doc.response = res.text
+			frappe.log_error(title='Error in creating API Log', message=frappe.get_traceback())
+
+		log_doc.status_code = res.status_code
+		log_doc.ref_doctype = ref_doctype
+		log_doc.ref_document = ref_docname
+		log_doc.save()
+		return log_doc.name
+	except:
+		frappe.log_error(title='Error in creating API Log', message=frappe.get_traceback())
+	else:
+		frappe.db.commit()
+
+
+@frappe.whitelist()
+def get_payment_date(payload):
+	payload = frappe._dict(payload)
+	request_log = frappe.get_value("Bank Request Log", {
+		"action": "Initiate Payment",
+		"config_details":["like", f"%{payload.payment_id}%"],
+		"status_code": "200",
+		"ref_doctype": "Payment Order",
+		"ref_document": payload.payment_order
+	},
+	["name", "creation"], as_dict=1)
+
+	response = frappe._dict()
+
+	if request_log:
+		response.server_status = "Success"
+		response.payment_date = request_log.creation
+
+	return response
