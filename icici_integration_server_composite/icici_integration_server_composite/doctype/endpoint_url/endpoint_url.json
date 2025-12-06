@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-12-06 13:58:02.908843",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "action",
+  "column_break_kcot",
+  "url"
+ ],
+ "fields": [
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Action",
+   "options": "\nMake Payment\nGet Status\nGet Balance\nGet Statement\nGet Statement Paginated",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_kcot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "url",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "End Point",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-12-06 23:16:05.716451",
+ "modified_by": "Administrator",
+ "module": "Icici Integration Server Composite",
+ "name": "Endpoint URL",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

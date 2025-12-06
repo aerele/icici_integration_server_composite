@@ -17,13 +17,16 @@
   "retailer_code",
   "pass_code",
   "bcid",
-  "ifsc_code",
   "column_break_xenv",
   "payment_creator_user_id",
   "payment_status_checker_user_id",
   "api_key",
   "private_key",
-  "bank_public_key"
+  "bank_public_key",
+  "api_endpoints_tab",
+  "base_url",
+  "api_endpoints",
+  "reset_endpoints"
  ],
  "fields": [
   {
@@ -143,15 +146,31 @@
    "mandatory_depends_on": "enable_imps"
   },
   {
-   "default": "ICIC0000011",
-   "fieldname": "ifsc_code",
+   "fieldname": "api_endpoints_tab",
+   "fieldtype": "Tab Break",
+   "label": "API Endpoints"
+  },
+  {
+   "fieldname": "api_endpoints",
+   "fieldtype": "Table",
+   "options": "Endpoint URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "base_url",
    "fieldtype": "Data",
-   "label": "IFSC Code"
+   "label": "Base URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reset_endpoints",
+   "fieldtype": "Button",
+   "label": "Reset endpoints"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-10-24 16:11:36.385112",
+ "modified": "2025-12-06 23:46:20.620157",
  "modified_by": "Administrator",
  "module": "Icici Integration Server Composite",
  "name": "ICICI Connector",
@@ -171,6 +190,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []
