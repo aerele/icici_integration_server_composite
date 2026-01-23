@@ -20,13 +20,6 @@ import rsa
 from requests.models import Response
 
 
-payment_status_url = "https://apibankingone.icicibank.com/api/v1/composite-status"
-make_payment_url = "https://apibankingone.icicibank.com/api/v1/composite-payment"
-
-bank_balance_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/BalanceInquiry"
-bank_statement_url = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatement"
-bank_statement_url_paginated = "https://apibankingone.icicibank.com/api/Corporate/CIB/v1/AccountStatements"
-
 class BankRequestLog(Document):
 	pass
 
@@ -202,8 +195,8 @@ def make_payment(payload):
 		}
 
 		res_dict = frappe._dict({})
-
-		response = requests.post(make_payment_url, headers=headers, data=json.dumps(request_payload))
+		url = connector_doc.get_url(action="Make Payment")
+		response = requests.post(url=url, headers=headers, data=json.dumps(request_payload))
 
 		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
 
@@ -313,8 +306,8 @@ def get_payment_status(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-
-		response = requests.post(payment_status_url, headers=headers, data=json.dumps(request_payload))
+		url = connector_doc.get_url(action="Get Status")
+		response = requests.post(url=url, headers=headers, data=json.dumps(request_payload))
 
 		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data)
 
