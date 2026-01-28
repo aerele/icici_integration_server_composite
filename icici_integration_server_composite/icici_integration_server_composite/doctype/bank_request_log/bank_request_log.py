@@ -178,7 +178,7 @@ def make_payment(payload):
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
-			"host": "apibankingone.icicibank.com",
+			"host": "apibankingone.icici.bank.in",
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
@@ -291,7 +291,7 @@ def get_payment_status(payload):
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
-			"host": "apibankingone.icicibank.com",
+			"host": "apibankingone.icici.bank.in",
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
