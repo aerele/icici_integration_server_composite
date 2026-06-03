@@ -16,7 +16,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5 as Cipher_PKCS1_v1_5
 import base64
 import rsa
-
+from urllib.parse import urlparse
 from requests.models import Response
 
 
@@ -173,12 +173,14 @@ def make_payment(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
+		url = connector_doc.get_url(action="Make Payment")
+		host = urlparse(url).hostname
 		headers = {
 			"accept": "*/*",
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
-			"host": "apibankingone.icici.bank.in",
+			"host": host,
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
@@ -195,7 +197,6 @@ def make_payment(payload):
 		}
 
 		res_dict = frappe._dict({})
-		url = connector_doc.get_url(action="Make Payment")
 		response = requests.post(url=url, headers=headers, data=json.dumps(request_payload))
 
 		log_name = create_api_log(response, 'Initiate Payment', payload.parenttype, payload.parent, data)
@@ -286,12 +287,14 @@ def get_payment_status(payload):
 		encrypted_key = encrypt_key(aes_key_array, connector_doc)
 		encrypted_data = encrypt_data(data, aes_key_array)
 
+		url = connector_doc.get_url(action="Get Status")
+		host = urlparse(url).hostname
 		headers = {
 			"accept": "*/*",
 			"content-type": "application/json",
 			"apikey": connector_doc.get_password("api_key"),
 			"x-forwarded-for": connector_doc.get("ip_address", ''),
-			"host": "apibankingone.icici.bank.in",
+			"host": host,
 			"content-length": "684",
 			"x-priority": get_priority(payload.mode_of_transfer)
 		}
@@ -306,7 +309,6 @@ def get_payment_status(payload):
 			"optionalParam": "",
 			"iv": b64encode(IV).decode("utf-8")
 		}
-		url = connector_doc.get_url(action="Get Status")
 		response = requests.post(url=url, headers=headers, data=json.dumps(request_payload))
 
 		log_name = create_api_log(response, 'Payment Status', payload.parenttype, payload.parent, data)
